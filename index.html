@@ -55,7 +55,7 @@
     const EMAILJS_TEMPLATE_ID = 'template_aq7gbw7';  // ej. 'template_xyz456'
     const EMAILJS_PUBLIC_KEY  = 'kiW-lftdtQuMsieKQ';   // ej. 'AbCdEfGhIjKlMnOp'
     const RECIPIENT_EMAIL     = 'marinacardoso70@gmail.com';
-    const EMAIL_SUBJECT      = 'Bitácora Guatemala';
+    const EMAIL_SUBJECT      = 'Reporte Clínica Angelman Guatemala';
     // ────────────────────────────────────────────────────────────
   </script>
 </head>
@@ -221,6 +221,8 @@ function generarPDF(){
   doc.setFontSize(7);doc.setFont('helvetica','normal');doc.setTextColor(160,160,150);
   doc.text('Clínica Angelman Guatemala  |  Este documento forma parte del expediente clínico y debe resguardarse conforme a la normativa aplicable.',W/2,290,{align:'center'});
   const archivo = `consulta_${nombre.replace(/[^a-zA-Z0-9]/g,'_')}_${fechaConsulta}.pdf`;
+  // PDF listo en Base64 para adjuntarlo en EmailJS como Variable Attachment.
+  const pdfBase64 = doc.output('datauristring').split(',')[1];
   doc.save(archivo);
   
   // ── Enviar resumen por correo vía EmailJS ──────────────────
@@ -245,10 +247,12 @@ function generarPDF(){
     celular:      $('celular').value || '—',
     diagnostico:  diagnostico || '—',
     archivo:      archivo,
+    pdf_filename: archivo,
+    pdf_base64:   pdfBase64,
   };
   emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, templateParams)
     .then(() => {
-      showToast('✓ PDF generado y correo enviado a ' + RECIPIENT_EMAIL);
+      showToast('✓ PDF generado y correo enviado con adjunto a ' + RECIPIENT_EMAIL);
     })
     .catch(err => {
       const msg = err && err.text ? err.text : JSON.stringify(err);
