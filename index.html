@@ -194,9 +194,19 @@ function generarPDF(){
   const{jsPDF}=window.jspdf,doc=new jsPDF({unit:'mm',format:'a4'});
   const W=210,PL=20,PR=20,cW=W-PL-PR;let y=0;
   doc.setFillColor(27,143,175);doc.rect(0,0,W,38,'F');
-  // Fondo blanco redondeado detrás del logo
-  doc.setFillColor(255,255,255);doc.roundedRect(PL-2,1.5,50,32,3,3,'F');
-  try{doc.addImage('data:image/png;base64,'+LOGO_B64,'PNG',PL,6,50,16.7)}catch(e){}
+  // Logo mejor alineado y centrado en el encabezado del PDF
+  const logoBox = {x: PL-2, y: 4, w: 52, h: 24};
+  const logoAspect = 2476 / 822;
+  let logoW = logoBox.w - 4;
+  let logoH = logoW / logoAspect;
+  if(logoH > logoBox.h - 4){
+    logoH = logoBox.h - 4;
+    logoW = logoH * logoAspect;
+  }
+  const logoX = logoBox.x + (logoBox.w - logoW) / 2;
+  const logoY = logoBox.y + (logoBox.h - logoH) / 2;
+  doc.setFillColor(255,255,255);doc.roundedRect(logoBox.x,logoBox.y,logoBox.w,logoBox.h,3,3,'F');
+  try{doc.addImage('data:image/png;base64,'+LOGO_B64,'PNG',logoX,logoY,logoW,logoH)}catch(e){}
   doc.setTextColor(255,255,255);doc.setFont('helvetica','bold');doc.setFontSize(13);
   doc.text('Clínica Angelman Guatemala',74,14);
   doc.setFont('helvetica','normal');doc.setFontSize(8.5);
@@ -221,44 +231,73 @@ function generarPDF(){
   doc.setFontSize(7);doc.setFont('helvetica','normal');doc.setTextColor(160,160,150);
   doc.text('Clínica Angelman Guatemala  |  Este documento forma parte del expediente clínico y debe resguardarse conforme a la normativa aplicable.',W/2,290,{align:'center'});
   const archivo = `consulta_${nombre.replace(/[^a-zA-Z0-9]/g,'_')}_${fechaConsulta}.pdf`;
-  // PDF listo en Base64 para adjuntarlo en EmailJS como Variable Attachment.
-  const pdfBase64 = doc.output('datauristring').split(',')[1];
+  const pdfBlob = doc.output('blob');
   doc.save(archivo);
   
-  // ── Enviar resumen por correo vía EmailJS ──────────────────
+  // ── Enviar correo por EmailJS con el PDF como archivo real ───────────────
+  // IMPORTANTE EN EMAILJS:
+  // En el template > Attachments, agrega un adjunto tipo “Form File Attachment”
+  // y pon como Field name / Parameter name: pdf_file
+  // No uses pdf_base64, porque supera el límite de 50 KB de variables dinámicas.
   emailjs.init(EMAILJS_PUBLIC_KEY);
-  const templateParams = {
-    to_email:     RECIPIENT_EMAIL,
-    subject:      EMAIL_SUBJECT,
-    asunto:       EMAIL_SUBJECT,
-    email_subject: EMAIL_SUBJECT,
-    paciente:     nombre,
-    fecha:        fechaConsulta.split('-').reverse().join('/'),
-    medico:       medico,
-    especialidad: especialidad,
-    motivo:       motivo,
-    realizado:    $('realizado').value || '—',
-    plan:         $('plan').value || '—',
-    edad:         calcularEdad(fechaNac),
-    peso:         $('peso').value ? $('peso').value + ' kg' : '—',
-    altura:       $('altura').value ? $('altura').value + ' cm' : '—',
-    imc:          $('imc').value || '—',
-    cuidador:     $('cuidador').value || '—',
-    celular:      $('celular').value || '—',
-    diagnostico:  diagnostico || '—',
-    archivo:      archivo,
-    pdf_filename: archivo,
-    pdf_base64:   pdfBase64,
-  };
-  emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, templateParams)
-    .then(() => {
-      showToast('✓ PDF generado y correo enviado con adjunto a ' + RECIPIENT_EMAIL);
-    })
-    .catch(err => {
-      const msg = err && err.text ? err.text : JSON.stringify(err);
-      console.error('EmailJS error:', err);
-      alert('PDF generado correctamente.\n\nError al enviar correo:\n' + msg + '\n\nRevisa la consola del navegador (F12) para más detalles.');
-    });
+  const hiddenForm = document.createElement('form');
+  hiddenForm.style.display = 'none';
+  hiddenForm.enctype = 'multipart/form-data';
+
+  function addHiddenField(name, value){
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = name;
+    input.value = value == null ? '' : String(value);
+    hiddenForm.appendChild(input);
+  }
+
+  addHiddenField('to_email', RECIPIENT_EMAIL);
+  addHiddenField('subject', EMAIL_SUBJECT);
+  addHiddenField('asunto', EMAIL_SUBJECT);
+  addHiddenField('email_subject', EMAIL_SUBJECT);
+  addHiddenField('paciente', nombre);
+  addHiddenField('fecha', fechaConsulta.split('-').reverse().join('/'));
+  addHiddenField('medico', medico);
+  addHiddenField('especialidad', especialidad);
+  addHiddenField('motivo', motivo);
+  addHiddenField('realizado', $('realizado').value || '—');
+  addHiddenField('plan', $('plan').value || '—');
+  addHiddenField('edad', calcularEdad(fechaNac));
+  addHiddenField('peso', $('peso').value ? $('peso').value + ' kg' : '—');
+  addHiddenField('altura', $('altura').value ? $('altura').value + ' cm' : '—');
+  addHiddenField('imc', $('imc').value || '—');
+  addHiddenField('cuidador', $('cuidador').value || '—');
+  addHiddenField('celular', $('celular').value || '—');
+  addHiddenField('diagnostico', diagnostico || '—');
+  addHiddenField('archivo', archivo);
+  addHiddenField('pdf_filename', archivo);
+
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.name = 'pdf_file';
+  const pdfFile = new File([pdfBlob], archivo, { type: 'application/pdf' });
+
+  if(window.DataTransfer){
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(pdfFile);
+    fileInput.files = dataTransfer.files;
+    hiddenForm.appendChild(fileInput);
+    document.body.appendChild(hiddenForm);
+
+    emailjs.sendForm(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, hiddenForm)
+      .then(() => {
+        showToast('✓ PDF generado y correo enviado con adjunto a ' + RECIPIENT_EMAIL);
+      })
+      .catch(err => {
+        const msg = err && err.text ? err.text : JSON.stringify(err);
+        console.error('EmailJS error:', err);
+        alert('PDF generado correctamente.\n\nError al enviar correo:\n' + msg + '\n\nRevisa en EmailJS que el adjunto esté configurado como Form File Attachment con nombre: pdf_file');
+      })
+      .finally(() => hiddenForm.remove());
+  } else {
+    alert('PDF generado correctamente, pero este navegador no permite adjuntarlo automáticamente. Usa Chrome actualizado.');
+  }
 }
 function showToast(msg) {
   const t = $('toast');
