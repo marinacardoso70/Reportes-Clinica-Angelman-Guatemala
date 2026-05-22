@@ -234,70 +234,41 @@ function generarPDF(){
   const pdfBlob = doc.output('blob');
   doc.save(archivo);
   
-  // ── Enviar correo por EmailJS con el PDF como archivo real ───────────────
-  // IMPORTANTE EN EMAILJS:
-  // En el template > Attachments, agrega un adjunto tipo “Form File Attachment”
-  // y pon como Field name / Parameter name: pdf_file
-  // No uses pdf_base64, porque supera el límite de 50 KB de variables dinámicas.
+  // ── Enviar resumen por correo vía EmailJS ──────────────────
+  // Esta versión NO adjunta el PDF para evitar el límite de 50 KB de EmailJS.
+  // El PDF se descarga automáticamente en la computadora.
   emailjs.init(EMAILJS_PUBLIC_KEY);
-  const hiddenForm = document.createElement('form');
-  hiddenForm.style.display = 'none';
-  hiddenForm.enctype = 'multipart/form-data';
+  const templateParams = {
+    to_email:     RECIPIENT_EMAIL,
+    subject:      EMAIL_SUBJECT,
+    asunto:       EMAIL_SUBJECT,
+    email_subject: EMAIL_SUBJECT,
+    paciente:     nombre,
+    fecha:        fechaConsulta.split('-').reverse().join('/'),
+    medico:       medico,
+    especialidad: especialidad,
+    motivo:       motivo,
+    realizado:    $('realizado').value || '—',
+    plan:         $('plan').value || '—',
+    edad:         calcularEdad(fechaNac),
+    peso:         $('peso').value ? $('peso').value + ' kg' : '—',
+    altura:       $('altura').value ? $('altura').value + ' cm' : '—',
+    imc:          $('imc').value || '—',
+    cuidador:     $('cuidador').value || '—',
+    celular:      $('celular').value || '—',
+    diagnostico:  diagnostico || '—',
+    archivo:      archivo
+  };
 
-  function addHiddenField(name, value){
-    const input = document.createElement('input');
-    input.type = 'hidden';
-    input.name = name;
-    input.value = value == null ? '' : String(value);
-    hiddenForm.appendChild(input);
-  }
-
-  addHiddenField('to_email', RECIPIENT_EMAIL);
-  addHiddenField('subject', EMAIL_SUBJECT);
-  addHiddenField('asunto', EMAIL_SUBJECT);
-  addHiddenField('email_subject', EMAIL_SUBJECT);
-  addHiddenField('paciente', nombre);
-  addHiddenField('fecha', fechaConsulta.split('-').reverse().join('/'));
-  addHiddenField('medico', medico);
-  addHiddenField('especialidad', especialidad);
-  addHiddenField('motivo', motivo);
-  addHiddenField('realizado', $('realizado').value || '—');
-  addHiddenField('plan', $('plan').value || '—');
-  addHiddenField('edad', calcularEdad(fechaNac));
-  addHiddenField('peso', $('peso').value ? $('peso').value + ' kg' : '—');
-  addHiddenField('altura', $('altura').value ? $('altura').value + ' cm' : '—');
-  addHiddenField('imc', $('imc').value || '—');
-  addHiddenField('cuidador', $('cuidador').value || '—');
-  addHiddenField('celular', $('celular').value || '—');
-  addHiddenField('diagnostico', diagnostico || '—');
-  addHiddenField('archivo', archivo);
-  addHiddenField('pdf_filename', archivo);
-
-  const fileInput = document.createElement('input');
-  fileInput.type = 'file';
-  fileInput.name = 'pdf_file';
-  const pdfFile = new File([pdfBlob], archivo, { type: 'application/pdf' });
-
-  if(window.DataTransfer){
-    const dataTransfer = new DataTransfer();
-    dataTransfer.items.add(pdfFile);
-    fileInput.files = dataTransfer.files;
-    hiddenForm.appendChild(fileInput);
-    document.body.appendChild(hiddenForm);
-
-    emailjs.sendForm(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, hiddenForm)
-      .then(() => {
-        showToast('✓ PDF generado y correo enviado con adjunto a ' + RECIPIENT_EMAIL);
-      })
-      .catch(err => {
-        const msg = err && err.text ? err.text : JSON.stringify(err);
-        console.error('EmailJS error:', err);
-        alert('PDF generado correctamente.\n\nError al enviar correo:\n' + msg + '\n\nRevisa en EmailJS que el adjunto esté configurado como Form File Attachment con nombre: pdf_file');
-      })
-      .finally(() => hiddenForm.remove());
-  } else {
-    alert('PDF generado correctamente, pero este navegador no permite adjuntarlo automáticamente. Usa Chrome actualizado.');
-  }
+  emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, templateParams)
+    .then(() => {
+      showToast('✓ PDF generado y correo enviado a ' + RECIPIENT_EMAIL);
+    })
+    .catch(err => {
+      const msg = err && err.text ? err.text : JSON.stringify(err);
+      console.error('EmailJS error:', err);
+      alert('PDF generado correctamente.\n\nError al enviar correo:\n' + msg + '\n\nEsta versión no manda el PDF adjunto para evitar el límite de 50 KB de EmailJS.');
+    });
 }
 function showToast(msg) {
   const t = $('toast');
