@@ -120,7 +120,7 @@
   <div class="stamp"><p>⚕ <strong>Información confidencial</strong> — Este registro es parte del expediente clínico del paciente.<br>El PDF generado debe resguardarse conforme a la normativa aplicable.</p></div>
   <div class="actions">
     <button class="btn btn-secondary" onclick="limpiar()">Limpiar formulario</button>
-    <button class="btn btn-primary" onclick="generarPDF()">⬇ Generar PDF de la consulta</button>
+    <button class="btn btn-primary" id="btnGenerar" onclick="generarPDF()">⬇ Generar PDF y enviar correo</button>
   </div>
 </div>
 <div class="toast" id="toast">✓ PDF generado — revisa tus descargas</div>
@@ -186,7 +186,7 @@ function obtenerValor(selectId, otroId){
   return select.value;
 }
 
-function generarPDF(){
+async function generarPDF(){
   const nombre=$('nombre').value.trim(),fechaNac=$('fechaNac').value,medico=$('medico').value.trim(),
         especialidad=obtenerValor('especialidad','especialidadOtro'),motivo=$('motivo').value.trim(),fechaConsulta=$('fechaConsulta').value,
         diagnostico=obtenerValor('diagnostico','diagnosticoOtro');
@@ -231,44 +231,70 @@ function generarPDF(){
   doc.setFontSize(7);doc.setFont('helvetica','normal');doc.setTextColor(160,160,150);
   doc.text('Clínica Angelman Guatemala  |  Este documento forma parte del expediente clínico y debe resguardarse conforme a la normativa aplicable.',W/2,290,{align:'center'});
   const archivo = `consulta_${nombre.replace(/[^a-zA-Z0-9]/g,'_')}_${fechaConsulta}.pdf`;
-  const pdfBlob = doc.output('blob');
   doc.save(archivo);
   
   // ── Enviar resumen por correo vía EmailJS ──────────────────
-  // Esta versión NO adjunta el PDF para evitar el límite de 50 KB de EmailJS.
-  // El PDF se descarga automáticamente en la computadora.
-  emailjs.init(EMAILJS_PUBLIC_KEY);
+  // Importante: el PDF NO se adjunta. Solo se envía el resumen del formulario.
+  // El remitente real es la cuenta conectada al servicio EMAILJS_SERVICE_ID
+  // dentro del panel de EmailJS.
   const templateParams = {
-    to_email:     RECIPIENT_EMAIL,
-    subject:      EMAIL_SUBJECT,
-    asunto:       EMAIL_SUBJECT,
-    email_subject: EMAIL_SUBJECT,
-    paciente:     nombre,
-    fecha:        fechaConsulta.split('-').reverse().join('/'),
-    medico:       medico,
-    especialidad: especialidad,
-    motivo:       motivo,
-    realizado:    $('realizado').value || '—',
-    plan:         $('plan').value || '—',
-    edad:         calcularEdad(fechaNac),
-    peso:         $('peso').value ? $('peso').value + ' kg' : '—',
-    altura:       $('altura').value ? $('altura').value + ' cm' : '—',
-    imc:          $('imc').value || '—',
-    cuidador:     $('cuidador').value || '—',
-    celular:      $('celular').value || '—',
-    diagnostico:  diagnostico || '—',
-    archivo:      archivo
+    to_email:      RECIPIENT_EMAIL,
+    subject:       EMAIL_SUBJECT,
+    paciente:      nombre,
+    fecha:         fechaConsulta.split('-').reverse().join('/'),
+    medico:        medico,
+    especialidad:  especialidad,
+    motivo:        motivo,
+    realizado:     $('realizado').value || '—',
+    plan:          $('plan').value || '—',
+    edad:          calcularEdad(fechaNac),
+    peso:          $('peso').value ? $('peso').value + ' kg' : '—',
+    altura:        $('altura').value ? $('altura').value + ' cm' : '—',
+    imc:           $('imc').value || '—',
+    cuidador:      $('cuidador').value || '—',
+    celular:       $('celular').value || '—',
+    diagnostico:   diagnostico || '—',
+    archivo:       archivo
   };
 
-  emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, templateParams)
-    .then(() => {
-      showToast('✓ PDF generado y correo enviado a ' + RECIPIENT_EMAIL);
-    })
-    .catch(err => {
-      const msg = err && err.text ? err.text : JSON.stringify(err);
-      console.error('EmailJS error:', err);
-      alert('PDF generado correctamente.\n\nError al enviar correo:\n' + msg + '\n\nEsta versión no manda el PDF adjunto para evitar el límite de 50 KB de EmailJS.');
-    });
+  const btn = $('btnGenerar');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Enviando correo…';
+  }
+
+  try {
+    if (!window.emailjs) {
+      throw new Error('No se cargó la librería EmailJS. Revisa la conexión a Internet o si el navegador bloqueó cdn.jsdelivr.net.');
+    }
+
+    const respuesta = await emailjs.send(
+      EMAILJS_SERVICE_ID,
+      EMAILJS_TEMPLATE_ID,
+      templateParams,
+      { publicKey: EMAILJS_PUBLIC_KEY }
+    );
+
+    console.log('EmailJS enviado:', respuesta.status, respuesta.text);
+    showToast('✓ PDF generado y correo enviado a ' + RECIPIENT_EMAIL);
+  } catch (err) {
+    const msg = err?.text || err?.message || String(err);
+    console.error('EmailJS error completo:', err);
+    alert(
+      'El PDF se generó correctamente, pero el correo no pudo enviarse.\n\n' +
+      'Detalle: ' + msg + '\n\n' +
+      'Verifica en EmailJS:\n' +
+      '1. Que el servicio ' + EMAILJS_SERVICE_ID + ' siga conectado.\n' +
+      '2. Que el template ' + EMAILJS_TEMPLATE_ID + ' tenga To Email = {{to_email}}.\n' +
+      '3. Que el dominio/origen desde donde abres esta página esté permitido.\n' +
+      '4. Que no se haya agotado la cuota de envíos.'
+    );
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = '⬇ Generar PDF y enviar correo';
+    }
+  }
 }
 function showToast(msg) {
   const t = $('toast');
