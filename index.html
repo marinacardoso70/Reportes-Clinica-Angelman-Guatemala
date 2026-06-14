@@ -210,15 +210,6 @@ async function obtenerLogoDataUrl(){
 
 let envioPendiente = null;
 
-function obtenerClaveEnvio(){
-  let clave = sessionStorage.getItem('angelman_clave_envio') || '';
-  if(!clave){
-    clave = (prompt('Ingresa la clave de envío del equipo clínico:') || '').trim();
-    if(clave) sessionStorage.setItem('angelman_clave_envio', clave);
-  }
-  return clave;
-}
-
 function crearCampoFormulario(form, nombre, valor){
   const campo = document.createElement('textarea');
   campo.name = nombre;
@@ -256,7 +247,6 @@ function enviarAAppsScript(datos){
     form.style.display = 'none';
 
     crearCampoFormulario(form, 'request_id', requestId);
-    crearCampoFormulario(form, 'form_password', datos.clave);
     crearCampoFormulario(form, 'payload', JSON.stringify(datos.payload));
     crearCampoFormulario(form, 'pdf_base64', datos.pdfBase64);
     crearCampoFormulario(form, 'filename', datos.filename);
@@ -279,9 +269,6 @@ window.addEventListener('message', event => {
   if(data.ok){
     resolve(data);
   }else{
-    if(String(data.message || '').toLowerCase().includes('clave')){
-      sessionStorage.removeItem('angelman_clave_envio');
-    }
     reject(new Error(data.message || 'Google Apps Script rechazó el envío.'));
   }
 });
@@ -295,11 +282,6 @@ async function generarPDF(){
     return;
   }
 
-  const clave = obtenerClaveEnvio();
-  if(!clave){
-    alert('No se realizó el envío porque no se ingresó la clave del equipo clínico.');
-    return;
-  }
 
   const{jsPDF}=window.jspdf,doc=new jsPDF({unit:'mm',format:'a4'});
   const W=210,PL=20,PR=20,cW=W-PL-PR;let y=0;
@@ -371,7 +353,7 @@ async function generarPDF(){
   btn.textContent = 'Enviando correo…';
 
   try{
-    const respuesta = await enviarAAppsScript({clave, payload, pdfBase64, filename: archivo});
+    const respuesta = await enviarAAppsScript({payload, pdfBase64, filename: archivo});
     console.log('Google Apps Script:', respuesta);
     showToast('✓ PDF generado y enviado por correo correctamente');
   }catch(err){
@@ -379,7 +361,7 @@ async function generarPDF(){
     alert(
       'El PDF se descargó correctamente, pero no se pudo confirmar el envío por correo.\n\n' +
       'Detalle: ' + (err?.message || String(err)) + '\n\n' +
-      'Revisa la URL de Apps Script, la clave y el historial de ejecuciones del proyecto.'
+      'Revisa la URL de Apps Script y el historial de ejecuciones del proyecto.'
     );
   }finally{
     btn.disabled = false;
